@@ -1,24 +1,43 @@
-enum signalStates {INERT, GO, RESOLVE};  //00, 01, 10 in [A] [B]
-byte signalState = INERT;
+enum signalStates {INERT, GO, RESOLVE, BANDIT};  //00, 01, 10 in [A] [B]
+byte signalState = BANDIT;
 
 enum bidScoreComms {NONE, ONE, TWO, THREE}; //00, 01, 10 in [A] [B]
 byte bidScoreComm = ONE;
 byte bidScore = 1;
-byte blankbidComms = 00;
+
+enum winnerStates {WINNER, LOSER}; 
+byte winnerState = LOSER;
+
+
+//bool isDiamond = false;
 
 //checkWinner
+//bool firstTimeTreasure = true;
+//bool canWin = false;
 bool winner = true;
+bool onDiamond = false;
+bool endRound = false;
+byte toBandit;
+byte toDiamond;
+byte fromDiamondTreasure;
+byte fromBandit;
+//bool canSteal = true;
+bool flagYellow = false;
+
+//Identity
+//enum role {DIAMOND, TREASURE, CONDUIT, BANDIT};
+//byte role = BANDIT;
 bool isDiamond = false;
 bool isTreasure = false;
 bool isConduit = false;
-bool onDiamond = false;
+
 
 //byte prizeSignal = 0;
 byte winningFace = 6;
-byte diamondFace = 6;
+byte facingDiamondFace = 6;
 byte banditFace = 6;
 byte remainingTreasure = 0;
-byte pulseFace = 0;
+//byte pulseFace = 6;
 bool reset = false;
 
 bool isRevealed = false;
@@ -26,9 +45,18 @@ Timer revealTimer;
 #define REVEAL_INTERVAL 1000
 #define REVEAL_FADE 500
 Timer waitThenReveal;
-#define WAIT_THEN_REVEAL 3000
+Timer treasureWaitThenReveal;
+#define WAIT_THEN_REVEAL 1500
 int waitingFace = 0;
 Timer waitingFaceTimer;
+#define WAITING_FACE_CHANGE 250
+Timer diamondSendWinnerTimer;
+#define SEND_WINNER 500
+Timer showBidTimer;
+#define SHOW_BID 6000
+Timer switchColorTimer;
+#define PULSE_LENGTH 2000
+bool useWhite = true;
 
 Timer sparkleTimer;
 #define SPARKLE_DURATION 100
@@ -40,11 +68,21 @@ Color teamColors[6] = {RED, ORANGE, YELLOW, GREEN, CYAN, MAGENTA};
 byte teamColor = 0;
 
 void setup() {
+  waitThenReveal.set(10);
+  switchColorTimer.set(PULSE_LENGTH);  
 }
 
 
 void loop() {
+  if (switchColorTimer.isExpired()){
+    useWhite = !useWhite;
+    switchColorTimer.set(PULSE_LENGTH);
+  }
+  
   switch (signalState) {
+    case BANDIT:
+      banditLoop();
+      break;
     case INERT:
       inertLoop();
       break;
@@ -66,56 +104,62 @@ void loop() {
   else {
     banditVisuals();
   }
-
-
- //do comms
-   switch (bidScore) {
-    case 0:
-      bidScoreComm = NONE;
-      break;
-    case 1:
-      bidScoreComm = ONE;
-      break;
-    case 2:
-      bidScoreComm = TWO;
-      break;
-    case 3:
-      bidScoreComm = THREE;
-      break;
+//  if (signalState == GO){
+//      setColor(MAGENTA);
+//  }
+//  if (signalState == RESOLVE){
+//      setColor(BLUE);
+//  }
+//  if (signalState == BANDIT){
+//    setColorOnFace(BLUE,3);
+//  }
+//  if (signalState == INERT){
+//    setColorOnFace(MAGENTA,3);
+//  }
+//  if(endRound){
+//    setColorOnFace(BLUE,3);
+//  }
+  if (flagYellow){
+    setColor(YELLOW);
   }
-      
+  
+//  if (signalState == INERT){
+//      setColorOnFace(YELLOW, 5);
+//  }
+
+ //do comms    
   if (isDiamond) {
       FOREACH_FACE(f) {
         byte sendData;
         if (winningFace == f) {
-//          winner=true;
-          sendData = (signalState << 4) + (bidScoreComm << 2) + (winner << 1) + (isDiamond);
+          winnerState = WINNER;
+          sendData = (signalState << 4) + (bidScore << 2) + (winnerState << 1) + (isDiamond);
+//          flagYellow = true;
         }
         else {
-//          winner=false;
-          sendData = (signalState << 4) + (bidScoreComm << 2) + (!winner << 1) + (isDiamond);
+          winnerState = LOSER;
+          sendData = (signalState << 4) + (bidScore << 2) + (winnerState << 1) + (isDiamond);
         }
         setValueSentOnFace(sendData, f);
       }
     } 
     else if (isTreasure || isConduit) {
-      FOREACH_FACE(f) {
-        byte sendData;
-        if (f == diamondFace)
-        {
-          byte sendData = (signalState << 4) + (bidScoreComm << 2) + (!winner << 1) + (isDiamond);  
-        }
-        else {
-          byte sendData = (signalState << 4) + (bidScoreComm << 2) + (!winner << 1) + (isDiamond);
-        }
-        setValueSentOnFace(sendData, f);
-      }
+      setValueSentOnAllFaces(0);
+      byte sendData;
+
+          sendData = (signalState << 4) + (toDiamond << 2) + (winnerState << 1) + (isDiamond);  
+          setValueSentOnFace(sendData, facingDiamondFace);
+          sendData = (signalState << 4) + (toBandit << 2) + (winnerState << 1) + (isDiamond);
+          setValueSentOnFace(sendData, banditFace);
     }
     else {
-      FOREACH_FACE(f) {
-        byte sendData = (signalState << 4) + (bidScoreComm << 2) + (!winner << 1) + (isDiamond);
-        setValueSentOnFace(sendData, f);
-      }
+//      signalState = IGNORE;
+        byte sendData = (signalState << 4) + (bidScore << 2) + (0 << 1) + (isDiamond);
+        setValueSentOnAllFaces(sendData);
+//        if(facingDiamondFace < 6){
+//          sendData = (signalState << 4) + (bidScore << 2) + (0 << 1) + (isDiamond);
+//          setValueSentOnFace(sendData, facingDiamondFace);
+//        }
     }
   
   //dump button presses
@@ -124,126 +168,107 @@ void loop() {
   buttonMultiClicked();
 }
 
-void inertLoop() {
-  //BANDIT
-  if(!isDiamond && !isTreasure && !isConduit){
-    
-    if (buttonMultiClicked()) {
-      isTreasure = false;
-      isDiamond = true;
-      bidScore = 0;
-      bidScoreComm = NONE;
+void inertLoop(){
+//  if(!isDiamond && !isTreasure && !isConduit){
+//    banditLoop();
+//    }
+  if(isDiamond){
+    diamondLoop();
     }
-  
-    if (buttonSingleClicked()) {
-      //if I'm currently visible, increment count. Otherwise, just become revealed
-      if (isRevealed) {
-        bidScore += 1;
-        if (bidScore > 3) {
-          bidScore = 1;
-        }
+  else if(isTreasure && !isConduit){
+    treasureLoop();
+    }
+  else if(isConduit){
+    conduitLoop();
+    }
+}
+
+void banditLoop(){
+        if (buttonMultiClicked()) {
+        isTreasure = false;
+        isDiamond = true;
+        isConduit = false;
+        bidScore = 0;
+        signalState = INERT;
       }
-      revealTimer.set(REVEAL_INTERVAL + REVEAL_FADE);
-      isRevealed = true;
-    }
-    if (revealTimer.isExpired()) {
-      isRevealed = false;
-    }
-  
-    if (buttonDoubleClicked()) {
-      teamColor = (teamColor + 1) % 6;
-    }
     
-    pulseFace = 6;
-    //Bandit listen for GO to reveal bid and determine if we won
-    FOREACH_FACE(f) {
-      if (!isValueReceivedOnFaceExpired(f)) {//neighbor!
-        byte neighborData = getLastValueReceivedOnFace(f);
-        if(getSignalState(neighborData) == GO){
-          signalState = GO;
-          waitThenReveal.set(WAIT_THEN_REVEAL);
-          revealTimer.set(6000);   
+      if (buttonSingleClicked()) {
+        //if I'm currently visible, increment count. Otherwise, just become revealed
+        if (isRevealed) {
+          bidScore += 1;
+          if (bidScore > 3) {
+            bidScore = 1;
+          }
         }
-        //if stealing from a 1 or 2, then you just block and stay attached
-        if(getBidScore(neighborData) == ONE || getBidScore(neighborData) == TWO){
-          remainingTreasure = 0;
-          //send locked score animation up the chain to the Diamond
+        revealTimer.set(REVEAL_INTERVAL + REVEAL_FADE);
+        isRevealed = true;
+      }
+      if (revealTimer.isExpired()) {
+        isRevealed = false;
+      }
+    
+      if (buttonDoubleClicked()) {
+        teamColor = (teamColor + 1) % 6;
+      }
+  
+  
+  
+//      pulseFace = 6;
+      facingDiamondFace = 6;
+      onDiamond = false;
+      //Bandit listen for GO to reveal bid and determine if we won
+      //check if we can win  
+  FOREACH_FACE(f) {
+    if (!isValueReceivedOnFaceExpired(f)) {//neighbor!
+    byte neighborData = getLastValueReceivedOnFace(f);
+      if (getDiamond(neighborData) == true){
+
+        facingDiamondFace = f;
+        onDiamond = true; 
         }
-        else {
+      else if (!onDiamond && getSignalState(neighborData) != BANDIT ){ 
+
+        facingDiamondFace = f;
+      }
+    }
+  }
+   
+  if (facingDiamondFace < 6){
+    byte diamondNeighborData = getLastValueReceivedOnFace(facingDiamondFace);
+    if(getSignalState(diamondNeighborData) == GO ){
+      waitThenReveal.set(WAIT_THEN_REVEAL);
+      showBidTimer.set(6000);
+      
+      if(checkWinner(diamondNeighborData) == WINNER ){
+        banditFace = (facingDiamondFace + 3) % 6;
+        isTreasure = true;
+
+        //calculate remaining Treasure
+        if (onDiamond){
+          remainingTreasure = 6 - bidScore;  
+        }
+        else if (getBidScore(diamondNeighborData) == 1) {
+          //1 means Treasure has more than 2 remaining
           remainingTreasure = 4 - bidScore;
         }
-        if(checkWinner(neighborData) == true){
-          isTreasure = true;
-          diamondFace = f;   
-          banditFace = (diamondFace + 3) % 6;
-          bidScore = 0;  
-          bidScoreComm = NONE;           
-        } 
-        if(getDiamond(neighborData) == true){
-          onDiamond = true;
-          pulseFace = f;
+        else if (getBidScore(diamondNeighborData) == 0) {
+          //0 means Treasure has only 1 or 2 remaining so can't be stolen
+          remainingTreasure = 0;
         }
       }
+      signalState = GO;
     }
-
-//  if (isTreasure){
-//    if (onDiamond){
-//      
-//    }
-//  }
-  
-  
   }
-  
-//        //if neighbor score = 0 then not another Bandit so pulse
-//        if(getBidScore(neighborData) == 0){
-//          pulseFace = f;
-//        }
-  
-        //GO so check if winner and calculate score
-//        if (getSignalState(neighborData) == GO && getDiamond(neighborData) == true && checkWinner(neighborData) == true){ //GO Time!
-//          signalState = GO;
-//          //queue bid reveal
-//          waitThenReveal.set(WAIT_THEN_REVEAL);
-//          revealTimer.set(6000);
-          
-//          //We win this round
-//          if (getDiamond(neighborData) == true && checkWinner(neighborData) == true){ //diamond winner
-//            //diamond neighbor
-//            remainingTreasure = 6 - bidScore;
-//          }
-//          else if (getDiamond(neighborData) == false && checkWinner(neighborData) == true){ //treasure winner
-//            //treasure neighbor so check treasure's remainingTreasure
-//            if(getBidScore(neighborData) > 2){
-//              remainingTreasure = 4 - bidScore;
-//            }
-//            //if stealing from a 1 or 2, then you just block and stay attached
-//            else {
-//              remainingTreasure = 0;
-//              //send locked score animation up the chain to the Diamond
-//            }
-//          }
-//          diamondFace = f;   
-//          banditFace = (diamondFace + 3) % 6;
-//          isTreasure = true;
-//          bidScore = 0;  
-//          bidScoreComm = NONE;
-//        }
-////        else if (getSignalState(neighborData) == GO && getDiamond(neighborData) == true && checkWinner(neighborData) == true){ //GO Time!
-//      }
-//    }
-//  }
 
-  
-  //DIAMOND
-  else if(isDiamond){
-  
+     
+}
+
+void diamondLoop() {
+  //DIAMOND 
     if (buttonMultiClicked()) {
       if(buttonClickCount() == 3)
       {
-        isTreasure = false;
-        isDiamond = false;
-        bidScore = 1;
+        becomeBandit();
       }
       if(buttonClickCount() == 4)
       {
@@ -253,123 +278,146 @@ void inertLoop() {
 
     byte bidCount[3] = {0, 0, 0};//this tells me how many bids of 1/2/3 we receive
     byte bidLocation[3] = {6, 6, 6};//this tell me where the bid is located, defaulting to 6 because that's nowhere
-
-    //run through the faces and fill out these arrays
-    FOREACH_FACE(f) {
-      if (!isValueReceivedOnFaceExpired(f)) {//neighbor!
-        byte neighborData = getLastValueReceivedOnFace(f);
-//        if (getBidScore(neighborData) == 0) {
-//          //add to pulse face array
-//        }
-        byte thisBid = getBidScore(neighborData);
-        bidCount[thisBid - 1] += 1;//increment the count for this type of bid
-        bidLocation[thisBid - 1] = f;//set this as the location for that bid. Overwriting is fine because duplicates can't score anyway
-//        }
+   
+    //only if not waiting to reveal, then calculate winningFace and allow 2x click to enter GO 
+    if (waitThenReveal.isExpired()){
+      winningFace = 6;//default to 6 because that's no one
+      //run through the faces and fill out these arrays
+      FOREACH_FACE(f) {
+        if (!isValueReceivedOnFaceExpired(f)) {//neighbor!
+          byte neighborData = getLastValueReceivedOnFace(f);
+          byte thisBid = getBidScore(neighborData);
+          bidCount[thisBid - 1] += 1;//increment the count for this type of bid
+          bidLocation[thisBid - 1] = f;//set this as the location for that bid. Overwriting is fine because duplicates can't score anyway
+  //        }
+        }
       }
-    }
-
-    //now determine the winner and where it is located
-    winningFace = 6;//default to 6 because that's no one
-    //if only one 3 bid then it wins
-    if (bidCount[2] == 1) {
-      winningFace = bidLocation[2];
-    } else if (bidCount[1] == 1) {
-      winningFace = bidLocation[1];
-    } else if (bidCount[0] == 1) {
-      winningFace = bidLocation[0];
-    }
-
-    if (buttonDoubleClicked()) {//ok, so this is where we do the reveal
-      signalState = GO;
-      //play checkWinnerTimer
-      waitThenReveal.set(WAIT_THEN_REVEAL);
-    }
-  }
-
-  //TREASURE
-  else if(!isDiamond && isTreasure && !isConduit){
-    if (!isValueReceivedOnFaceExpired(banditFace)) {//neighbor on banditFace trying to steal, so pass along bid
-      byte neighborData = getLastValueReceivedOnFace(banditFace);
-      bidScore = getBidScore(neighborData);
-    }
-  }
+    
+      //now determine the winner and where it is located
+      //if only one 3 bid then it wins
+      if (bidCount[2] == 1) {
+        winningFace = bidLocation[2];
+      } else if (bidCount[1] == 1) {
+        winningFace = bidLocation[1];
+      } else if (bidCount[0] == 1) {
+        winningFace = bidLocation[0];
+      }
   
-  
-//  //CONDUIT
-//
-//  else if(isConduit){
-//    
-//  }
-
+      if (buttonDoubleClicked()) {//ok, so this is where we do the reveal
+        signalState = GO;
+        //play checkWinnerTimer
+        waitThenReveal.set(WAIT_THEN_REVEAL);
+        diamondSendWinnerTimer.set(SEND_WINNER);
+      }
+      
+    }
 }
 
-void goLoop() {
-    signalState = RESOLVE;//I default to this at the start of the loop. Only if I see a problem does this not happen  
-
-//  look for neighbors who have not heard the GO news
-  FOREACH_FACE(f) {
-    if (!isValueReceivedOnFaceExpired(f)) {//a neighbor!
-      if (getSignalState(getLastValueReceivedOnFace(f)) == INERT) {//This neighbor doesn't know it's GO time. Stay in GO
+void treasureLoop(){
+  //TREASURE
+    if (buttonMultiClicked()) {
+      becomeBandit();
+    }
+    
+    byte diamondNeighborData = getLastValueReceivedOnFace(facingDiamondFace);
+    if (!isValueReceivedOnFaceExpired(banditFace)) { //neighbor has bandit face trying to steal, so pass along bid
+      byte banditNeighborData = getLastValueReceivedOnFace(banditFace);
+      toDiamond = getBidScore(banditNeighborData);
+      toBandit = 0;
+      winnerState = LOSER;
+      
+      if (getSignalState(diamondNeighborData) == GO) {
         signalState = GO;
+        diamondSendWinnerTimer.set(SEND_WINNER);
+        if (checkWinner(diamondNeighborData) == WINNER) {
+          isConduit = true;
+          winnerState = WINNER;
+          treasureWaitThenReveal.set(WAIT_THEN_REVEAL);
+          if(remainingTreasure < 3) {
+            toBandit = 0;
+          }
+          else{
+            toBandit = 1;
+            remainingTreasure = remainingTreasure - (4 - toDiamond);
+          }
+        }
+      }
+    }
+    
+  }
+
+void conduitLoop(){
+//  //CONDUIT
+    if (buttonMultiClicked()) {
+      becomeBandit();
+    }
+    
+    if (!isValueReceivedOnFaceExpired(banditFace)) { //neighbor has bandit face trying to steal, so pass along bid
+      byte banditNeighborData = getLastValueReceivedOnFace(banditFace);
+      toDiamond = getBidScore(banditNeighborData);
+      byte diamondNeighborData = getLastValueReceivedOnFace(facingDiamondFace);
+      toBandit = 0;
+      winnerState = LOSER;
+      
+      if (getSignalState(diamondNeighborData) == GO) {
+        signalState = GO;
+        diamondSendWinnerTimer.set(SEND_WINNER);
+        if (checkWinner(diamondNeighborData) == WINNER) {
+          winnerState = WINNER;
+        }
       }
     }
   }
+
+void goLoop() {
+  //GO is the SEND_WINNER
+   
+   if(!isDiamond && !isTreasure && !isConduit){
+     signalState = BANDIT;
+   }
+   else if (isDiamond && !diamondSendWinnerTimer.isExpired()){
+    signalState = GO;
+   }
+   else{
+    signalState = RESOLVE;
+   }
 }
 
 void resolveLoop() {
-    signalState = INERT;//I default to this at the start of the loop. Only if I see a problem does this not happen
-
-  //look for neighbors who have not moved to RESOLVE
-  FOREACH_FACE(f) {
-    if (!isValueReceivedOnFaceExpired(f)) {//a neighbor!
-      if (getSignalState(getLastValueReceivedOnFace(f)) == GO) {//This neighbor isn't in RESOLVE. Stay in RESOLVE
-        signalState = RESOLVE; 
-      }
-    }
-  }
+  signalState = INERT;
 }
 
 
 void diamondVisuals() {
-  //default OFF to stop color lingering
   setColor(OFF);
-    
-  switch (signalState) {
-    case INERT:
-      if( sparkleTimer.isExpired() ){
-        sparkleTimer.set(10);
-        fullSparkle();
-        FOREACH_FACE(f) {
-          setColorOnFace(displayColor[f],f);
-        }
-      }
-      if (!waitThenReveal.isExpired()){
-        //running timer and not my first time as Treasure or TeamTreasure so circle spin animation
-        setColorOnFace(dim(WHITE,150),waitingFace % 6);
-        setColorOnFace(WHITE,(waitingFace+1) % 6);
-        setColorOnFace(dim(WHITE,150),(waitingFace+2) % 6);
-        setColorOnFace(OFF,(waitingFace+3) % 6);
-        setColorOnFace(OFF,(waitingFace+4) % 6);
-        setColorOnFace(OFF,(waitingFace+5) % 6);
-        if( waitingFaceTimer.isExpired() ){
-          waitingFaceTimer.set(500);
-          waitingFace ++;
-        }
-      }
 
-      
-      break;
-    case GO:
-      setColor(MAGENTA);
-      break;
-    case RESOLVE:
-      setColor(WHITE);
-      break;
+  if( sparkleTimer.isExpired() ){
+    sparkleTimer.set(10);
+    fullSparkle();
+    FOREACH_FACE(f) {
+      setColorOnFace(displayColor[f],f);
+    }
+  }
+  if (!waitThenReveal.isExpired()){
+    //running timer and not my first time as Treasure or TeamTreasure so circle spin animation
+    setColorOnFace(dim(WHITE,150),waitingFace % 6);
+    setColorOnFace(WHITE,(waitingFace+1) % 6);
+    setColorOnFace(dim(WHITE,150),(waitingFace+2) % 6);
+    setColorOnFace(OFF,(waitingFace+3) % 6);
+    setColorOnFace(OFF,(waitingFace+4) % 6);
+    setColorOnFace(OFF,(waitingFace+5) % 6);
+    if( waitingFaceTimer.isExpired() ){
+      waitingFaceTimer.set(WAITING_FACE_CHANGE);
+      waitingFace ++;
+    }
+  }
+
+  if (winningFace != 6) {
+    setColorOnFace(RED, winningFace);
   }
 }
 
 void fullSparkle(){
-
   int whiteShine = random(5);
   int whiteShine2 = random(5)-3;
 //  int whiteShine3 = random(2);
@@ -398,26 +446,61 @@ void fullSparkle(){
 }
 
 void treasureVisuals(){
-  
+  if (!treasureWaitThenReveal.isExpired()){
+  }
+  else
+  {
+    setColor(OFF);    
+  //  if (firstTimeTreasure){
+//    firstTimeTreasure = false;
+//    waitThenReveal.set(WAIT_THEN_REVEAL);
+//  }
+    if (!waitThenReveal.isExpired()){
+      //spin team color while Waiting to Reveal
+      setColorOnFace(dim(teamColors[teamColor],150),waitingFace % 6);
+      setColorOnFace(teamColors[teamColor],(waitingFace+1) % 6);
+      setColorOnFace(dim(teamColors[teamColor],150),(waitingFace+2) % 6);
+      setColorOnFace(OFF,(waitingFace+3) % 6);
+      setColorOnFace(OFF,(waitingFace+4) % 6);
+      setColorOnFace(OFF,(waitingFace+5) % 6);
+      if(waitingFaceTimer.isExpired() ){
+        waitingFaceTimer.set(WAITING_FACE_CHANGE);
+        waitingFace ++;
+      }
+    }
+    else {     
+      FOREACH_FACE(f) {
+        if(useWhite){
+          setColorOnFace(dim(WHITE, random(150)), f);   
+        }
+        else{
+          setColorOnFace(dim(makeColorRGB(84,204,255), random(150)), f);          
+        }     
+      }
+      FOREACH_FACE(f) {
+        if (f < remainingTreasure) {
+          setColorOnFace(teamColors[teamColor], f);
+        }
+      }
+    }
+  }
 }
 
 void banditVisuals(){
   setColor(OFF);
   if (waitThenReveal.isExpired()) {
     //not waiting to reveal
-    if (isRevealed) {
+    if(!showBidTimer.isExpired()){
       FOREACH_FACE(f) {
-        if (bidScore >= 1) {
-          setColorOnFace(teamColors[teamColor], 0);
-          setColorOnFace(teamColors[teamColor], 1);        
-        } 
-        if (bidScore >= 2) {
-          setColorOnFace(teamColors[teamColor], 2);
-          setColorOnFace(teamColors[teamColor], 3);        
-        } 
-        if (bidScore >= 3) {
-          setColorOnFace(teamColors[teamColor], 4);
-          setColorOnFace(teamColors[teamColor], 5);        
+        if (bidScore > f ) {
+          setColorOnFace(teamColors[teamColor], f);
+        }
+      } 
+    }
+    else if (isRevealed) {
+      FOREACH_FACE(f) {
+        if (bidScore > f ) {
+          setColorOnFace(teamColors[teamColor], f);
         } 
         else if (revealTimer.getRemaining() < REVEAL_FADE && !revealTimer.isExpired()) {
           byte fadeLevel = 300 - map(revealTimer.getRemaining(), 0, REVEAL_FADE, 0, 150);
@@ -429,7 +512,27 @@ void banditVisuals(){
       FOREACH_FACE(f) {
         setColorOnFace(dim(teamColors[teamColor], random(150)), f);
       }
+      if (facingDiamondFace < 6){
+//        setColorOnFace(GREEN, facingDiamondFace);
+        //get progress from 0 - MAX
+        int pulseProgress = millis() % PULSE_LENGTH;
+      
+        //transform that progress to a byte (0-255)
+        byte pulseMapped = map(pulseProgress, 0, PULSE_LENGTH, 0, 255);
+      
+        //transform that byte with sin
+        byte dimness = sin8_C(pulseMapped);
+  
+        if(useWhite){
+          setColorOnFace(dim(WHITE, dimness), facingDiamondFace);   
+        }
+        else{
+          setColorOnFace(dim(teamColors[teamColor], dimness), facingDiamondFace);          
+        }
+        
+      }
     }
+
   }
   else {
     //spin team color while Waiting to Reveal
@@ -440,12 +543,23 @@ void banditVisuals(){
     setColorOnFace(OFF,(waitingFace+4) % 6);
     setColorOnFace(OFF,(waitingFace+5) % 6);
     if( waitingFaceTimer.isExpired() ){
-      waitingFaceTimer.set(500);
+      waitingFaceTimer.set(WAITING_FACE_CHANGE);
       waitingFace ++;
     }
   }
 }
 
+void becomeBandit(){
+  isTreasure = false;
+  isDiamond = false;
+  isConduit = false;
+  bidScore = 1;
+//  firstTimeTreasure = true;
+  signalState = BANDIT;
+  facingDiamondFace = 6;
+}
+
+        
 byte getSignalState(byte data) {
     return ((data >> 4) & 3);//returns bits A & B
 }
@@ -455,9 +569,9 @@ byte getBidScore(byte data) {
 }
 
 byte checkWinner(byte data) {
-    return (data >> 1);//returns bit E
+    return (data >> 1) & 1;//returns bit E
 }
 
 byte getDiamond(byte data) {
-    return (data);//returns bit F
+    return (data) & 1;//returns bit F
 }
