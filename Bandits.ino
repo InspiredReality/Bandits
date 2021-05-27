@@ -41,6 +41,9 @@ byte winningFace = 6;
 Timer revealTimer;
 #define REVEAL_INTERVAL 2000
 
+Timer waitingFaceTimer;
+int waitingFace = 0;
+
 #define NO_DIAMOND 6
 #define NO_BANDIT 6
 
@@ -278,27 +281,18 @@ void conduitLoop() {
               //if 5 then only send 2 not 3
               if(pointsEarned == 5){
                 prizeSignal = 2;
-//                pointsEarned = 3;
-//                prizeSignal = pointsEarned - (pointsEarned / 2) - 1;//hand out half less 1 for low win bonus
-//                pointsEarned = pointsEarned - prizeSignal;//retain half rounded down
               }
               else{
                 prizeSignal = pointsEarned - (pointsEarned / 2);//hand out half rounded up  
-//                pointsEarned = pointsEarned / 2;//retain half rounded down
               }
-             
               beginReveal(prizeSignal);//memory value helps us remember how many points we're giving away
               conduitRevealType = WIN_PASS;
-
               if(pointsEarned == 5){
-//                pointsEarned = pointsEarned - prizeSignal;//retain half rounded down
                   pointsEarned = 3;
               }
               else{
                 pointsEarned = pointsEarned / 2;//retain half rounded down
               }
-                            
-//              pointsEarned = pointsEarned / 2;//retain half rounded down
               diamondSignal = (diamondData & 56) + prizeSignal;
             } else {
               //just another conduit
@@ -469,6 +463,11 @@ void banditDisplay() {
 
 
 void diamondDisplay() {
+
+//        if( (resultsTimer.getRemaining() - RESULTS_2 - RESULTS_3 - RESULTS_4) > (RESULTS_1 / 6)){
+//          waitingFace ++;
+//        }
+  
   if (resultsTimer.isExpired()) {//normal display
     setColor(makeColorHSB(DIAMOND_HUE, DIAMOND_SAT_MAX, 255));
 
@@ -485,14 +484,17 @@ void diamondDisplay() {
     //    }
 
   } else if (resultsTimer.getRemaining() > (RESULTS_2 + RESULTS_3 + RESULTS_4)) {//stage 1
-
+    //this is where I need to spin when "deciding"
     setColor(makeColorHSB(DIAMOND_HUE, DIAMOND_SAT_MAX, 100));
-    setColorOnFace(WHITE, random(5));
+    setColorOnFace(WHITE, waitingFace);
+    waitingFace ++;
+    waitingFace = waitingFace % 6;
+//    setColorOnFace(BLUE, random(5));
 
   } else if (resultsTimer.getRemaining() > (RESULTS_4)) {//stage 2 and 3
 
     setColor(makeColorHSB(DIAMOND_HUE, DIAMOND_SAT_MAX, 100));
-    setColorOnFace(dim(WHITE, 100), random(5));
+    setColorOnFace(dim(BLUE, 100), random(5));
     if (resultsMem < 6) {
       setColorOnFace(WHITE, resultsMem);
     }
