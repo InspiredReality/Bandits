@@ -486,10 +486,10 @@ void diamondDisplay() {
   } else if (resultsTimer.getRemaining() > (RESULTS_2 + RESULTS_3 + RESULTS_4)) {//stage 1
     //this is where I need to spin when "deciding"
     setColor(makeColorHSB(DIAMOND_HUE, DIAMOND_SAT_MAX, 100));
+    setColorOnFace(WHITE, waitingFace + 1);
     setColorOnFace(WHITE, waitingFace);
     waitingFace ++;
     waitingFace = waitingFace % 6;
-//    setColorOnFace(BLUE, random(5));
 
   } else if (resultsTimer.getRemaining() > (RESULTS_4)) {//stage 2 and 3
 
